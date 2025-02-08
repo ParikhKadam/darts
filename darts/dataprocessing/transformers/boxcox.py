@@ -3,23 +3,22 @@ Box-Cox Transformer
 -------------------
 """
 
-from typing import Any, Mapping, Optional, Sequence, Union
-
-try:
-    from typing import Literal
-except ImportError:
-    from typing_extensions import Literal
+from collections.abc import Mapping, Sequence
+from typing import Any, Literal, Optional, Union
 
 import numpy as np
 import pandas as pd
 from scipy.special import inv_boxcox
 from scipy.stats import boxcox, boxcox_normmax
 
+from darts.dataprocessing.transformers.fittable_data_transformer import (
+    FittableDataTransformer,
+)
+from darts.dataprocessing.transformers.invertible_data_transformer import (
+    InvertibleDataTransformer,
+)
 from darts.logging import get_logger, raise_if
 from darts.timeseries import TimeSeries
-
-from .fittable_data_transformer import FittableDataTransformer
-from .invertible_data_transformer import InvertibleDataTransformer
 
 logger = get_logger(__name__)
 
@@ -67,10 +66,10 @@ class BoxCox(FittableDataTransformer, InvertibleDataTransformer):
             Specifies which method to use to find an optimal value for the lmbda parameter.
             Either 'mle' or 'pearsonr'. Ignored if `lmbda` is not `None`.
         global_fit
-            Optionally, whether all of the `TimeSeries` passed to the `fit()` method should be used to fit
+            Optionally, whether all `TimeSeries` passed to the `fit()` method should be used to fit
             a *single* set of parameters, or if a different set of parameters should be independently fitted
             to each provided `TimeSeries`. If `True`, then a `Sequence[TimeSeries]` is passed to `ts_fit`
-            and a single set of parameters is fitted using all of the provided `TimeSeries`. If `False`, then
+            and a single set of parameters is fitted using all provided `TimeSeries`. If `False`, then
             each `TimeSeries` is individually passed to `ts_fit`, and a different set of fitted parameters
             if yielded for each of these fitting operations. See `FittableDataTransformer` documentation for
             further details.
@@ -135,8 +134,8 @@ class BoxCox(FittableDataTransformer, InvertibleDataTransformer):
         series: Union[TimeSeries, Sequence[TimeSeries]],
         params: Mapping[str, Any],
         *args,
-        **kwargs
-    ) -> Union[Sequence[float], pd.core.series.Series]:
+        **kwargs,
+    ) -> Union[Sequence[float], pd.Series]:
         lmbda, method = params["fixed"]["_lmbda"], params["fixed"]["_optim_method"]
         # If `global_fit` is `True`, then `series` will be ` Sequence[TimeSeries]`;
         # otherwise, `series` is a single `TimeSeries`:
@@ -164,7 +163,6 @@ class BoxCox(FittableDataTransformer, InvertibleDataTransformer):
     def ts_transform(
         series: TimeSeries, params: Mapping[str, Any], **kwargs
     ) -> TimeSeries:
-
         lmbda = params["fitted"]
 
         vals = BoxCox.stack_samples(series)
@@ -178,7 +176,6 @@ class BoxCox(FittableDataTransformer, InvertibleDataTransformer):
     def ts_inverse_transform(
         series: TimeSeries, params: Mapping[str, Any], **kwargs
     ) -> TimeSeries:
-
         lmbda = params["fitted"]
 
         vals = BoxCox.stack_samples(series)

@@ -1,17 +1,19 @@
-import unittest
+from collections.abc import Sequence
 from copy import deepcopy
-from typing import Optional, Sequence
+from typing import Optional
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from darts.dataprocessing.transformers import Diff
 from darts.timeseries import TimeSeries
 from darts.timeseries import concatenate as darts_concat
 from darts.utils.timeseries_generation import linear_timeseries, sine_timeseries
+from darts.utils.utils import freqs
 
 
-class DiffTestCase(unittest.TestCase):
+class TestDiff:
     sine_series = [
         5 * sine_timeseries(length=50, value_frequency=f) for f in (0.05, 0.1, 0.15)
     ]
@@ -27,7 +29,6 @@ class DiffTestCase(unittest.TestCase):
         equal_nan: bool,
         to_compare: Optional[np.ndarray] = None,
     ):
-
         """
         Helper to compare series differenced by `Diff`.
 
@@ -53,7 +54,7 @@ class DiffTestCase(unittest.TestCase):
         np.testing.assert_allclose(
             series1.all_values(), series2.all_values(), atol=1e-8, equal_nan=equal_nan
         )
-        self.assertTrue(series1.time_index.equals(series2.time_index))
+        assert series1.time_index.equals(series2.time_index)
 
     def test_diff_quad_series(self):
         """
@@ -97,7 +98,7 @@ class DiffTestCase(unittest.TestCase):
 
         # Artifically truncate series:
         short_sine = self.sine_series.copy().drop_after(10)
-        for (lags, dropna) in test_cases:
+        for lags, dropna in test_cases:
             # Fit Diff to truncated series:
             diff = Diff(lags=lags, dropna=dropna)
             diff.fit(short_sine)
@@ -133,7 +134,7 @@ class DiffTestCase(unittest.TestCase):
             (1, False, component_mask),
             ([1, 2, 3, 2, 1], False, component_mask),
         ]
-        for (lags, dropna, mask) in test_cases:
+        for lags, dropna, mask in test_cases:
             diff = Diff(lags=lags, dropna=dropna)
             transformed = diff.fit_transform(
                 [self.sine_series, self.sine_series], component_mask=mask
@@ -172,7 +173,7 @@ class DiffTestCase(unittest.TestCase):
         vals = np.random.rand(10, 5, 10)
         series = TimeSeries.from_values(vals)
 
-        for (lags, dropna) in test_cases:
+        for lags, dropna in test_cases:
             transformer = Diff(lags=lags, dropna=dropna)
             new_series = transformer.fit_transform(series)
             series_back = transformer.inverse_transform(new_series)
@@ -186,16 +187,13 @@ class DiffTestCase(unittest.TestCase):
         length to differenced components.
         """
         diff = Diff(lags=1, dropna=True)
-        with self.assertRaises(ValueError) as e:
+        with pytest.raises(ValueError) as e:
             diff.fit(self.sine_series, component_mask=np.array([1, 0, 1], dtype=bool))
-        self.assertEqual(
-            (
-                "Cannot specify `component_mask` with `dropna = True`, "
-                "since differenced and undifferenced components will be "
-                "of different lengths."
-            ),
-            str(e.exception),
-        )
+        assert (
+            "Cannot specify `component_mask` with `dropna = True`, "
+            "since differenced and undifferenced components will be "
+            "of different lengths."
+        ) == str(e.value)
 
     def test_diff_series_too_short(self):
         """
@@ -204,16 +202,13 @@ class DiffTestCase(unittest.TestCase):
         """
         lags = (1000,)
         diff = Diff(lags=lags)
-        with self.assertRaises(ValueError) as e:
+        with pytest.raises(ValueError) as e:
             diff.fit(self.sine_series)
-        self.assertEqual(
-            (
-                f"Series requires at least {sum(lags) + 1} timesteps "
-                f"to difference with lags {lags}; series only "
-                f"has {self.sine_series.n_timesteps} timesteps."
-            ),
-            str(e.exception),
-        )
+        assert (
+            f"Series requires at least {sum(lags) + 1} timesteps "
+            f"to difference with lags {lags}; series only "
+            f"has {self.sine_series.n_timesteps} timesteps."
+        ) == str(e.value)
 
     def test_diff_incompatible_inverse_transform_date(self):
         """
@@ -231,20 +226,17 @@ class DiffTestCase(unittest.TestCase):
             diff = Diff(lags=1, dropna=dropna)
             diff.fit(series1)
             series2_diffed = series2.diff(n=1, periods=1, dropna=dropna)
-            with self.assertRaises(ValueError) as e:
+            with pytest.raises(ValueError) as e:
                 diff.inverse_transform(series2_diffed)
             expected_start = (
                 series1.start_time()
                 if (not dropna)
                 else series1.start_time() + series1.freq
             )
-            self.assertEqual(
-                (
-                    f"Expected series to begin at time {expected_start}; "
-                    f"instead, it begins at time {series2_diffed.start_time()}."
-                ),
-                str(e.exception),
-            )
+            assert (
+                f"Expected series to begin at time {expected_start}; "
+                f"instead, it begins at time {series2_diffed.start_time()}."
+            ) == str(e.value)
 
     def test_diff_incompatible_inverse_transform_freq(self):
         """
@@ -256,15 +248,16 @@ class DiffTestCase(unittest.TestCase):
             values=vals, times=pd.date_range(start="1/1/2018", freq="W", periods=10)
         )
         series2 = TimeSeries.from_times_and_values(
-            values=vals, times=pd.date_range(start="1/1/2018", freq="M", periods=10)
+            values=vals,
+            times=pd.date_range(start="1/1/2018", freq=freqs["ME"], periods=10),
         )
         diff = Diff(lags=1, dropna=True)
         diff.fit(series1)
-        with self.assertRaises(ValueError) as e:
+        with pytest.raises(ValueError) as e:
             diff.inverse_transform(series2.diff(n=1, periods=1, dropna=True))
-        self.assertEqual(
-            f"Series is of frequency {series2.freq}, but transform was fitted to data of frequency {series1.freq}.",
-            str(e.exception),
+        assert (
+            f"Series is of frequency {series2.freq}, but transform was fitted to data of frequency {series1.freq}."
+            == str(e.value)
         )
 
     def test_diff_incompatible_inverse_transform_shape(self):
@@ -280,22 +273,20 @@ class DiffTestCase(unittest.TestCase):
         series_rm_comp = TimeSeries.from_times_and_values(
             values=vals[:, 1:, :], times=dates
         )
-        with self.assertRaises(ValueError) as e:
+        with pytest.raises(ValueError) as e:
             diff.inverse_transform(series_rm_comp.diff(n=1, periods=1, dropna=True))
-        self.assertEqual(
+        assert (
             f"Expected series to have {series.n_components} components; "
-            f"instead, it has {series.n_components-1}.",
-            str(e.exception),
+            f"instead, it has {series.n_components - 1}." == str(e.value)
         )
         series_rm_samp = TimeSeries.from_times_and_values(
             values=vals[:, :, 1:], times=dates
         )
-        with self.assertRaises(ValueError) as e:
+        with pytest.raises(ValueError) as e:
             diff.inverse_transform(series_rm_samp.diff(n=1, periods=1, dropna=True))
-        self.assertEqual(
+        assert (
             f"Expected series to have {series.n_samples} samples; "
-            f"instead, it has {series.n_samples-1}.",
-            str(e.exception),
+            f"instead, it has {series.n_samples - 1}." == str(e.value)
         )
 
     def test_diff_multiple_calls_to_fit(self):
@@ -310,4 +301,4 @@ class DiffTestCase(unittest.TestCase):
         diff.fit(self.sine_series + 1)
         startvals2 = deepcopy(diff._fitted_params)[0][0]
 
-        self.assertFalse(np.allclose(startvals1, startvals2))
+        assert not np.allclose(startvals1, startvals2)
